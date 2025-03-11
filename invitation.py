@@ -7,9 +7,70 @@ from webdriver_manager.chrome import ChromeDriverManager
 from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.common.keys import Keys
 import time
+import os
 
 
-def login_and_redeem_invitation(invitation_code="928-747-119"):
+def get_unused_invitation_codes(invitation_code_file="invitation_code.txt", used_code_file="used_code.txt"):
+    """
+    Compare invitation codes with used codes to find unused codes.
+
+    Args:
+        invitation_code_file: Path to file containing all invitation codes
+        used_code_file: Path to file containing already used codes
+
+    Returns:
+        list: List of unused invitation codes
+    """
+    # Read all invitation codes from file
+    try:
+        with open(invitation_code_file, 'r') as f:
+            all_codes = [line.strip() for line in f if line.strip()]
+        print(f"Loaded {len(all_codes)} invitation codes from {invitation_code_file}")
+    except FileNotFoundError:
+        print(f"Error: Invitation code file '{invitation_code_file}' not found!")
+        return []
+
+    # Read used codes from file or create the file if it doesn't exist
+    used_codes = []
+    try:
+        with open(used_code_file, 'r') as f:
+            used_codes = [line.strip() for line in f if line.strip()]
+        print(f"Loaded {len(used_codes)} used codes from {used_code_file}")
+    except FileNotFoundError:
+        print(f"Used code file '{used_code_file}' not found, will create it when codes are used")
+
+    # Find unused codes using set difference operation
+    unused_codes = list(set(all_codes) - set(used_codes))
+    print(f"Found {len(unused_codes)} unused invitation codes")
+
+    return unused_codes
+
+
+def mark_code_as_used(code, used_code_file="used_code.txt"):
+    """
+    Add a used invitation code to the used codes file
+
+    Args:
+        code: The invitation code that was used
+        used_code_file: Path to file tracking used codes
+    """
+    with open(used_code_file, 'a') as f:
+        f.write(f"{code}\n")
+    print(f"Marked code '{code}' as used in {used_code_file}")
+
+
+def login_and_redeem_invitation(invitation_code):
+    """
+    Log in to Duoink website and redeem an invitation code
+
+    Args:
+        invitation_code: The invitation code to redeem
+
+    Returns:
+        tuple: (success status, driver object, status code)
+    """
+    print(f"Starting to process invitation code: {invitation_code}")
+
     # Setup Chrome WebDriver with webdriver-manager
     options = webdriver.ChromeOptions()
     options.add_argument('--start-maximized')
@@ -109,7 +170,7 @@ def login_and_redeem_invitation(invitation_code="928-747-119"):
 
                 if already_invited_error and already_invited_error.is_displayed():
                     print("Error: You have already been invited by this person. Cannot redeem this code again.")
-                    driver.save_screenshot("already_invited_error.png")
+                    driver.save_screenshot(f"already_invited_error_{invitation_code}.png")
 
                     # Find and click the cancel button
                     cancel_button = WebDriverWait(driver, 10).until(
@@ -140,25 +201,25 @@ def login_and_redeem_invitation(invitation_code="928-747-119"):
                 ok_button.click()
                 print("Clicked 'OK' button")
 
-                print("Invitation code has been successfully redeemed!")
-                driver.save_screenshot("redemption_success.png")
+                print(f"Invitation code {invitation_code} has been successfully redeemed!")
+                driver.save_screenshot(f"redemption_success_{invitation_code}.png")
 
                 return True, driver, "SUCCESS"
             except TimeoutException:
                 print("Success modal did not appear. Redemption might have failed.")
-                driver.save_screenshot("success_modal_timeout.png")
+                driver.save_screenshot(f"success_modal_timeout_{invitation_code}.png")
                 return False, driver, "SUCCESS_MODAL_TIMEOUT"
 
         except TimeoutException as e:
             print(f"Timeout error: {str(e)}")
-            driver.save_screenshot("timeout_error.png")
+            driver.save_screenshot(f"timeout_error_{invitation_code}.png")
             return False, driver, "TIMEOUT"
 
     except Exception as e:
         print(f"An error occurred: {str(e)}")
         try:
-            driver.save_screenshot("error.png")
-            print("Error screenshot saved as 'error.png'")
+            driver.save_screenshot(f"error_{invitation_code}.png")
+            print(f"Error screenshot saved as 'error_{invitation_code}.png'")
         except:
             print("Could not save error screenshot")
         return False, driver, "ERROR"
@@ -166,26 +227,58 @@ def login_and_redeem_invitation(invitation_code="928-747-119"):
 
 def main():
     print("Starting Duoink PTE login and invitation redemption script...")
-    success, driver, status = login_and_redeem_invitation()
 
-    try:
-        if success:
-            print("Successfully logged in and redeemed invitation code!")
-        else:
-            if status == "ALREADY_INVITED":
-                print("Process completed but invitation was not redeemed because you were already invited.")
-            elif status == "TIMEOUT":
-                print("Process timed out while waiting for an element.")
-            elif status == "SUCCESS_MODAL_TIMEOUT":
-                print("Process completed but the success confirmation did not appear.")
+    # Get the list of unused invitation codes
+    unused_codes = get_unused_invitation_codes()
+
+    if not unused_codes:
+        print("No unused invitation codes found. Exiting program.")
+        return
+
+    print(f"Found {len(unused_codes)} unused codes to process")
+
+    # Initialize login status - will only login once and reuse the browser session
+    is_logged_in = False
+    driver = None
+
+    # Process each unused code
+    for i, code in enumerate(unused_codes):
+        print(f"\n[{i + 1}/{len(unused_codes)}] Processing invitation code: {code}")
+
+        # Process the invitation code
+        success, driver, status = login_and_redeem_invitation(code)
+
+        # Mark the code as used regardless of success (to avoid retrying problematic codes)
+        mark_code_as_used(code)
+
+        try:
+            if success:
+                print(f"Successfully redeemed invitation code: {code}")
             else:
-                print("Process failed with status:", status)
+                if status == "ALREADY_INVITED":
+                    print(f"Code {code} was not redeemed because you were already invited.")
+                elif status == "TIMEOUT":
+                    print(f"Process timed out while waiting for an element with code {code}.")
+                elif status == "SUCCESS_MODAL_TIMEOUT":
+                    print(f"Process completed but the success confirmation did not appear for code {code}.")
+                else:
+                    print(f"Process failed with status: {status} for code {code}")
 
-        # Keep the browser open for a bit to see the result
-        print("Keeping browser open for 30 seconds...")
-        time.sleep(30)
+            # Pause briefly between codes
+            print("Waiting 5 seconds before processing next code...")
+            time.sleep(5)
 
-    finally:
+        except Exception as e:
+            print(f"Error during processing: {str(e)}")
+
+    print("\nAll invitation codes have been processed")
+
+    # Keep the browser open for a bit to see the result
+    print("Keeping browser open for 30 seconds...")
+    time.sleep(30)
+
+    # Close the browser
+    if driver:
         print("Closing browser...")
         driver.quit()
         print("Browser closed")
