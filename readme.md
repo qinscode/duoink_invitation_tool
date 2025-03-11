@@ -5,22 +5,28 @@
 </div>
 <br>
 <p align="center">
-  <a href="https://github.com/yourusername/duoink-invitation-tool/actions/workflows/ci.yml">
+  <a href="https://github.com/qinscode/duoink_invitation_tool/actions/workflows/ci.yml">
     <img src="https://img.shields.io/badge/tests-passing-brightgreen" alt="Test Status">
   </a>
-  <a href="https://github.com/yourusername/duoink-invitation-tool/releases">
+  <a href="https://github.com/qinscode/duoink_invitation_tool/releases">
     <img src="https://img.shields.io/badge/version-1.0.0-blue" alt="Version">
   </a>
   <img src="https://img.shields.io/badge/python-3.6+-yellow" alt="Python Version">
-  <a href="https://github.com/yourusername/duoink-invitation-tool/issues">
+  <a href="https://github.com/qinscode/duoink_invitation_tool/issues">
     <img src="https://img.shields.io/badge/contributions-welcome-orange" alt="Contributions Welcome">
   </a>
-  <a href="https://github.com/yourusername/duoink-invitation-tool">
+  <a href="https://github.com/qinscode/duoink_invitation_tool">
     <img src="https://img.shields.io/badge/license-MIT-green" alt="License">
   </a>
 </p>
 
 Welcome to the Duoink PTE Invitation Code Redemption Tool codebase. This tool automates the process of redeeming multiple invitation codes on the Duoink PTE platform, making it efficient to process batches of codes with minimal manual intervention.
+
+## Responsible Usage Statement
+
+**Important:** As the developer, I do not endorse excessive use of invitation codes. For this reason, only 30 invitation codes are provided in the included `invitation_code.txt` file. If you wish to obtain more codes, please search on Rednote (小红书) by yourself.
+
+I would like to express my gratitude to the Duoink team for providing these benefits. If your financial situation allows, please consider supporting them by purchasing a membership.
 
 ## What is Duoink PTE Invitation Tool?
 
@@ -28,6 +34,7 @@ This tool is designed to help users automate the redemption of invitation codes 
 
 ## Table of Contents
 
+- [Responsible Usage Statement](#responsible-usage-statement)
 - [What is Duoink PTE Invitation Tool?](#what-is-duoink-pte-invitation-tool)
 - [Table of Contents](#table-of-contents)
 - [Features](#features)
@@ -70,8 +77,8 @@ This section provides a quick start guide to set up and use the tool.
 
 1. Clone this repository or download the code
    ```bash
-   git clone https://github.com/qinscode/duoink-invitation-tool.git
-   cd duoink-invitation-tool
+   git clone https://github.com/qinscode/duoink_invitation_tool.git
+   cd duoink_invitation_tool
    ```
 
 2. Install the required dependencies
@@ -85,7 +92,7 @@ This section provides a quick start guide to set up and use the tool.
 
 The tool works with the following files:
 
-- `invitation_code.txt` - **Already provided** with the tool, contains invitation codes in the format of `XXX-XXX-XXX` (e.g., `346-384-193`)
+- `invitation_code.txt` - **Already provided** with the tool, contains 30 invitation codes in the format of `XXX-XXX-XXX` (e.g., `346-384-193`)
 - `used_code.txt` - Automatically created to track successfully redeemed codes
 - `error_code.txt` - Automatically created to track invalid codes
 
@@ -109,9 +116,9 @@ Example of invitation codes format in the provided `invitation_code.txt`:
 
 ### Usage Limitations
 
-**Important:** The Duoink platform has a daily limit of approximately 100 invitation code redemptions per account. Please be aware of this limitation when using the tool:
+**Important:** The Duoink has a daily limit of approximately 100 invitation code redemptions per account. Please be aware of this limitation when using the tool:
 
-- Plan to process no more than 100 codes per day
+- The tool comes with only 30 invitation codes by design to promote responsible usage
 - If you have more codes, consider spreading the process across multiple days
 - The tool will track which codes have been used or resulted in errors, so you can safely run it on consecutive days without duplicate processing
 
