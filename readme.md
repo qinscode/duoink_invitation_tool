@@ -68,8 +68,8 @@ This section provides a quick start guide to set up and use the tool.
 
 1. Clone this repository or download the code
    ```bash
-   git clone https://github.com/yourusername/duoink-invitation-tool.git
-   cd duoink-invitation-tool
+   git clone https://github.com/qinscode/duoink_invitation_tool.git
+   cd duoink_invitation_tool
    ```
 
 2. Install the required dependencies
