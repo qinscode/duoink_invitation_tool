@@ -10,13 +10,15 @@ import time
 import os
 
 
-def get_unused_invitation_codes(invitation_code_file="invitation_code.txt", used_code_file="used_code.txt"):
+def get_unused_invitation_codes(invitation_code_file="invitation_code.txt", used_code_file="used_code.txt",
+                                error_code_file="error_code.txt"):
     """
-    Compare invitation codes with used codes to find unused codes.
+    Compare invitation codes with used codes and error codes to find unused codes.
 
     Args:
         invitation_code_file: Path to file containing all invitation codes
         used_code_file: Path to file containing already used codes
+        error_code_file: Path to file containing invalid/error codes
 
     Returns:
         list: List of unused invitation codes
@@ -39,8 +41,18 @@ def get_unused_invitation_codes(invitation_code_file="invitation_code.txt", used
     except FileNotFoundError:
         print(f"Used code file '{used_code_file}' not found, will create it when codes are used")
 
+    # Read error codes from file or create the file if it doesn't exist
+    error_codes = []
+    try:
+        with open(error_code_file, 'r') as f:
+            error_codes = [line.strip() for line in f if line.strip()]
+        print(f"Loaded {len(error_codes)} error codes from {error_code_file}")
+    except FileNotFoundError:
+        print(f"Error code file '{error_code_file}' not found, will create it when invalid codes are found")
+
     # Find unused codes using set difference operation
-    unused_codes = list(set(all_codes) - set(used_codes))
+    # Remove both used and error codes from all codes
+    unused_codes = list(set(all_codes) - set(used_codes) - set(error_codes))
     print(f"Found {len(unused_codes)} unused invitation codes")
 
     return unused_codes
@@ -59,17 +71,27 @@ def mark_code_as_used(code, used_code_file="used_code.txt"):
     print(f"Marked code '{code}' as used in {used_code_file}")
 
 
-def login_and_redeem_invitation(invitation_code):
+def mark_code_as_error(code, error_code_file="error_code.txt"):
     """
-    Log in to Duoink website and redeem an invitation code
+    Add an invalid invitation code to the error codes file
 
     Args:
-        invitation_code: The invitation code to redeem
+        code: The invitation code that was invalid
+        error_code_file: Path to file tracking error codes
+    """
+    with open(error_code_file, 'a') as f:
+        f.write(f"{code}\n")
+    print(f"Marked code '{code}' as invalid in {error_code_file}")
+
+
+def login_to_duoink():
+    """
+    Log in to Duoink website
 
     Returns:
-        tuple: (success status, driver object, status code)
+        webdriver: Browser instance with logged in session or None if login failed
     """
-    print(f"Starting to process invitation code: {invitation_code}")
+    print("Starting login process...")
 
     # Setup Chrome WebDriver with webdriver-manager
     options = webdriver.ChromeOptions()
@@ -108,121 +130,222 @@ def login_and_redeem_invitation(invitation_code):
         print("Waiting for login to complete automatically...")
 
         # Check for the nickname element to appear (indicates successful login)
+        user_nickname = WebDriverWait(driver, 60).until(  # Increased timeout to give ample time for scanning
+            EC.presence_of_element_located((By.XPATH, "//div[contains(@class, 'nickname')]"))
+        )
+
+        print(f"Found user nickname: '{user_nickname.text.strip()}'")
+        print("Login successful! You are now logged into Duoink PTE.")
+
+        # Navigate to the PTE dashboard
+        driver.get("https://duoink.co/pte/")
+        print("Navigated to PTE dashboard page")
+
+        # Wait a bit to let the dashboard load
+        time.sleep(1)
+
+        return driver
+
+    except Exception as e:
+        print(f"Login failed: {str(e)}")
+        driver.quit()
+        return None
+
+
+def redeem_invitation_code(driver, invitation_code):
+    """
+    Redeem an invitation code using an already logged in browser session
+
+    Args:
+        driver: WebDriver instance with active logged-in session
+        invitation_code: The invitation code to redeem
+
+    Returns:
+        tuple: (success status, status code)
+    """
+    print(f"Processing invitation code: {invitation_code}")
+
+    try:
+        # Find the input field using various attributes from the provided HTML
         try:
-            user_nickname = WebDriverWait(driver, 60).until(  # Increased timeout to give ample time for scanning
-                EC.presence_of_element_located((By.XPATH, "//div[contains(@class, 'nickname')]"))
+            # Primary method: Find by input attributes (autocomplete, autofocus, type)
+            input_field = WebDriverWait(driver, 5).until(
+                EC.presence_of_element_located(
+                    (By.CSS_SELECTOR, "input[autocomplete='off'][autofocus='autofocus'][type='text']"))
             )
-
-            print(f"Found user nickname: '{user_nickname.text.strip()}'")
-            print("Login successful! You are now logged into Duoink PTE.")
-
-            # Navigate to the PTE dashboard
-            driver.get("https://duoink.co/pte/")
-            print("Navigated to PTE dashboard page")
-
-            # Wait a bit to let the dashboard load
-            time.sleep(3)
-
-            # Look for invitation code input field
+            print("Found input field by attribute combination")
+        except TimeoutException:
+            # First backup: Try finding by ID pattern (input-XXX)
             try:
-                # Try to find search input that could be used for invitation code
-                input_field = WebDriverWait(driver, 10).until(
-                    EC.presence_of_element_located((By.XPATH,
-                                                    "//input[contains(@placeholder, 'invitation') or contains(@placeholder, '邀请码') or contains(@class, 'search-input')]"))
+                input_field = WebDriverWait(driver, 5).until(
+                    EC.presence_of_element_located((By.CSS_SELECTOR, "input[id^='input-']"))
                 )
-                print("Found invitation code input field")
+                print("Found input field by ID pattern")
             except TimeoutException:
-                # If no specific field found, try to find any input field
-                input_field = WebDriverWait(driver, 10).until(
+                # Last resort: Just find any input
+                input_field = WebDriverWait(driver, 5).until(
                     EC.presence_of_element_located((By.TAG_NAME, "input"))
                 )
-                print("Found generic input field")
+                print("Found input field as generic input tag")
 
-            # Input the invitation code
-            input_field.clear()
-            input_field.send_keys(invitation_code)
-            print(f"Entered invitation code: {invitation_code}")
-            input_field.send_keys(Keys.RETURN)
-            print("Pressed Enter after entering the code")
+        # Clear the input field properly
+        # First try to use the clear button if it exists
+        try:
+            clear_button = driver.find_element(By.XPATH, "//button[contains(@class, 'mdi-close')]")
+            if clear_button.is_displayed():
+                clear_button.click()
+                print("Cleared input field using clear button")
+        except NoSuchElementException:
+            print("No clear button found, using keyboard shortcuts")
 
-            # Wait for the confirmation modal to appear
-            confirmation_modal = WebDriverWait(driver, 10).until(
+        # Ensure field is clear with multiple methods
+        input_field.clear()
+        input_field.send_keys(Keys.CONTROL + "a")
+        input_field.send_keys(Keys.DELETE)
+        print("Cleared input field")
+
+        # Input the invitation code
+        input_field.send_keys(invitation_code)
+        print(f"Entered invitation code: {invitation_code}")
+        input_field.send_keys(Keys.RETURN)
+        print("Pressed Enter after entering the code")
+
+        # Wait for the confirmation modal to appear
+        try:
+            confirmation_modal = WebDriverWait(driver, 5).until(
                 EC.visibility_of_element_located((By.XPATH,
                                                   "//div[contains(@class, 'v-card') and .//div[contains(text(), '兑换邀请码') or contains(text(), 'Redeem Invitation Code')]]"))
             )
             print("Confirmation modal appeared")
 
             # Find and click the confirmation button
-            confirm_button = WebDriverWait(driver, 10).until(
+            confirm_button = WebDriverWait(driver, 3).until(
                 EC.element_to_be_clickable(
                     (By.XPATH, "//button[.//span[contains(text(), '确认') or contains(text(), 'Confirm')]]"))
             )
             confirm_button.click()
             print("Clicked 'Confirm' button")
-
-            # Wait a short time for any error message to appear
-            time.sleep(2)
-
-            # Check for error message about already being invited
+        except TimeoutException:
+            # Check if we got a direct error instead of a confirmation modal
             try:
-                already_invited_error = driver.find_element(By.XPATH,
-                                                            "//div[contains(text(), '您已经被该邀请人邀请过了') or contains(text(), 'already been invited')]")
+                # Check for any red error message
+                error_element = driver.find_element(By.CSS_SELECTOR, "div[style*='background-color: rgb(244, 67, 54)']")
+                error_text = error_element.text.strip()
 
-                if already_invited_error and already_invited_error.is_displayed():
-                    print("Error: You have already been invited by this person. Cannot redeem this code again.")
-                    driver.save_screenshot(f"already_invited_error_{invitation_code}.png")
-
-                    # Find and click the cancel button
-                    cancel_button = WebDriverWait(driver, 10).until(
-                        EC.element_to_be_clickable(
-                            (By.XPATH, "//button[.//span[contains(text(), '取消') or contains(text(), 'Cancel')]]"))
-                    )
-                    cancel_button.click()
-                    print("Clicked 'Cancel' button")
-
-                    return False, driver, "ALREADY_INVITED"
+                # Determine error type based on text content
+                if "Cannot find referrer" in error_text:
+                    print(f"Direct error: Invalid invitation code. Error text: '{error_text}'")
+                    return False, "INVALID_CODE"
+                elif "已经被该邀请人邀请过了" in error_text or "请不要重复邀请" in error_text:
+                    print(f"Direct error: Already invited. Error text: '{error_text}'")
+                    return False, "ALREADY_INVITED"
+                else:
+                    print(f"Direct unknown error: '{error_text}'")
+                    return False, "UNKNOWN_ERROR"
             except NoSuchElementException:
-                # No error found, proceed with the success flow
+                print("No confirmation modal or error message found")
+                return False, "NO_RESPONSE"
+
+        # After clicking confirm, wait a moment and look for all possible outcomes
+        time.sleep(2)
+
+        # Get all red error messages (since they share the same color and styling)
+        try:
+            error_elements = driver.find_elements(By.CSS_SELECTOR, "div[style*='background-color: rgb(244, 67, 54)']")
+            if error_elements:
+                # If we found any error elements, check their text
+                for error_element in error_elements:
+                    error_text = error_element.text.strip()
+
+                    # Check specific error messages
+                    if "已经被该邀请人邀请过了" in error_text or "请不要重复邀请" in error_text:
+                        print(f"Error: Already invited. Message: '{error_text}'")
+
+                        # Try to click cancel button
+                        try:
+                            cancel_button = WebDriverWait(driver, 3).until(
+                                EC.element_to_be_clickable(
+                                    (By.XPATH,
+                                     "//button[.//span[contains(text(), '取消') or contains(text(), 'Cancel')]]"))
+                            )
+                            cancel_button.click()
+                            print("Clicked 'Cancel' button")
+                        except:
+                            print("No cancel button found for already invited error")
+
+                        return False, "ALREADY_INVITED"
+
+                    elif "Cannot find referrer" in error_text:
+                        print(f"Error: Invalid invitation code. Message: '{error_text}'")
+
+                        # Try to click cancel button
+                        try:
+                            cancel_button = WebDriverWait(driver, 3).until(
+                                EC.element_to_be_clickable(
+                                    (By.XPATH,
+                                     "//button[.//span[contains(text(), '取消') or contains(text(), 'Cancel')]]"))
+                            )
+                            cancel_button.click()
+                            print("Clicked 'Cancel' button")
+                        except:
+                            print("No cancel button found for invalid code")
+
+                        return False, "INVALID_CODE"
+
+                    else:
+                        print(f"Unknown error message: '{error_text}'")
+                        return False, "UNKNOWN_ERROR"
+        except Exception as e:
+            print(f"Error when checking for error messages: {str(e)}")
+            # Continue to check for success case
+
+        # Check for success modal
+        try:
+            success_modal = WebDriverWait(driver, 3).until(
+                EC.visibility_of_element_located((By.XPATH,
+                                                  "//div[contains(@class, 'v-card') and .//div[contains(text(), '兑换成功') or contains(text(), 'Redemption Successful')]]"))
+            )
+            print("Success modal appeared")
+
+            # Find and click the OK button
+            ok_button = WebDriverWait(driver, 3).until(
+                EC.element_to_be_clickable(
+                    (By.XPATH, "//button[.//span[contains(text(), 'OK') or contains(text(), '确定')]]"))
+            )
+            ok_button.click()
+            print("Clicked 'OK' button")
+
+            print(f"Invitation code {invitation_code} has been successfully redeemed!")
+
+            return True, "SUCCESS"
+        except TimeoutException:
+            # If no success modal was found, take screenshot and report unknown outcome
+            print("Could not detect success modal after clicking confirm")
+
+            # Do one final check for any error messages
+            try:
+                any_error = driver.find_element(By.CSS_SELECTOR, "div[style*='background-color: rgb(244, 67, 54)']")
+                error_text = any_error.text.strip()
+                print(f"Found error message on final check: '{error_text}'")
+
+                if "已经被该邀请人邀请过了" in error_text or "请不要重复邀请" in error_text:
+                    return False, "ALREADY_INVITED"
+                elif "Cannot find referrer" in error_text:
+                    return False, "INVALID_CODE"
+                else:
+                    return False, "UNKNOWN_ERROR"
+            except NoSuchElementException:
                 pass
 
-            # Wait for the success modal to appear
-            try:
-                success_modal = WebDriverWait(driver, 10).until(
-                    EC.visibility_of_element_located((By.XPATH,
-                                                      "//div[contains(@class, 'v-card') and .//div[contains(text(), '兑换成功') or contains(text(), 'Redemption Successful')]]"))
-                )
-                print("Success modal appeared")
-
-                # Find and click the OK button
-                ok_button = WebDriverWait(driver, 10).until(
-                    EC.element_to_be_clickable(
-                        (By.XPATH, "//button[.//span[contains(text(), 'OK') or contains(text(), '确定')]]"))
-                )
-                ok_button.click()
-                print("Clicked 'OK' button")
-
-                print(f"Invitation code {invitation_code} has been successfully redeemed!")
-                driver.save_screenshot(f"redemption_success_{invitation_code}.png")
-
-                return True, driver, "SUCCESS"
-            except TimeoutException:
-                print("Success modal did not appear. Redemption might have failed.")
-                driver.save_screenshot(f"success_modal_timeout_{invitation_code}.png")
-                return False, driver, "SUCCESS_MODAL_TIMEOUT"
-
-        except TimeoutException as e:
-            print(f"Timeout error: {str(e)}")
-            driver.save_screenshot(f"timeout_error_{invitation_code}.png")
-            return False, driver, "TIMEOUT"
+            return False, "UNKNOWN_OUTCOME"
 
     except Exception as e:
         print(f"An error occurred: {str(e)}")
         try:
-            driver.save_screenshot(f"error_{invitation_code}.png")
             print(f"Error screenshot saved as 'error_{invitation_code}.png'")
         except:
             print("Could not save error screenshot")
-        return False, driver, "ERROR"
+        return False, "ERROR"
 
 
 def main():
@@ -237,51 +360,58 @@ def main():
 
     print(f"Found {len(unused_codes)} unused codes to process")
 
-    # Initialize login status - will only login once and reuse the browser session
-    is_logged_in = False
-    driver = None
+    # Login once at the beginning
+    driver = login_to_duoink()
 
-    # Process each unused code
-    for i, code in enumerate(unused_codes):
-        print(f"\n[{i + 1}/{len(unused_codes)}] Processing invitation code: {code}")
+    if not driver:
+        print("Login failed. Cannot proceed with invitation redemption.")
+        return
 
-        # Process the invitation code
-        success, driver, status = login_and_redeem_invitation(code)
+    try:
+        # Process each unused code with the same browser session
+        for i, code in enumerate(unused_codes):
+            print(f"\n[{i + 1}/{len(unused_codes)}] Processing invitation code: {code}")
 
-        # Mark the code as used regardless of success (to avoid retrying problematic codes)
-        mark_code_as_used(code)
+            # Process the invitation code with our already logged in session
+            success, status = redeem_invitation_code(driver, code)
 
-        try:
             if success:
                 print(f"Successfully redeemed invitation code: {code}")
+                # Mark the code as successfully used
+                mark_code_as_used(code)
             else:
-                if status == "ALREADY_INVITED":
+                if status == "INVALID_CODE":
+                    print(f"Code {code} is invalid. Adding to error_code.txt")
+                    # Mark as error code
+                    mark_code_as_error(code)
+                elif status == "ALREADY_INVITED":
                     print(f"Code {code} was not redeemed because you were already invited.")
-                elif status == "TIMEOUT":
-                    print(f"Process timed out while waiting for an element with code {code}.")
-                elif status == "SUCCESS_MODAL_TIMEOUT":
-                    print(f"Process completed but the success confirmation did not appear for code {code}.")
+                    # Still mark as used to avoid retrying
+                    mark_code_as_used(code)
+                elif status == "UNKNOWN_OUTCOME":
+                    print(f"Unknown outcome for code {code}. Not marking it as used or error.")
                 else:
                     print(f"Process failed with status: {status} for code {code}")
 
             # Pause briefly between codes
-            print("Waiting 5 seconds before processing next code...")
-            time.sleep(5)
+            print("Waiting 2 seconds before processing next code...")
+            time.sleep(2)
 
-        except Exception as e:
-            print(f"Error during processing: {str(e)}")
+        print("\nAll invitation codes have been processed")
 
-    print("\nAll invitation codes have been processed")
+    except Exception as e:
+        print(f"Error during processing: {str(e)}")
 
-    # Keep the browser open for a bit to see the result
-    print("Keeping browser open for 30 seconds...")
-    time.sleep(30)
+    finally:
+        # Keep the browser open for a bit to see the result
+        print("Keeping browser open for 10 seconds...")
+        time.sleep(10)
 
-    # Close the browser
-    if driver:
-        print("Closing browser...")
-        driver.quit()
-        print("Browser closed")
+        # Close the browser
+        if driver:
+            print("Closing browser...")
+            driver.quit()
+            print("Browser closed")
 
 
 if __name__ == "__main__":
