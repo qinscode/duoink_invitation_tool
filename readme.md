@@ -9,9 +9,10 @@
     <img src="https://img.shields.io/badge/tests-passing-brightgreen" alt="Test Status">
   </a>
   <a href="https://github.com/qinscode/duoink_invitation_tool/releases">
-    <img src="https://img.shields.io/badge/version-1.0.0-blue" alt="Version">
+    <img src="https://img.shields.io/badge/version-1.2.0-blue" alt="Version">
   </a>
-  <img src="https://img.shields.io/badge/python-3.6+-yellow" alt="Python Version">
+  <img src="https://img.shields.io/badge/python-3.8+-yellow" alt="Python Version">
+  <img src="https://img.shields.io/badge/Chrome-133+-purple" alt="Python Version">
   <a href="https://github.com/qinscode/duoink_invitation_tool/issues">
     <img src="https://img.shields.io/badge/contributions-welcome-orange" alt="Contributions Welcome">
   </a>
