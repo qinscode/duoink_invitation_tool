@@ -60,7 +60,7 @@ def login_and_redeem_invitation(invitation_code="928-747-119"):
             print("Navigated to PTE dashboard page")
 
             # Wait a bit to let the dashboard load
-            time.sleep(5)
+            time.sleep(3)
 
             # Look for invitation code input field
             try:
