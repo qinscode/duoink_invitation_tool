@@ -7,7 +7,6 @@ from webdriver_manager.chrome import ChromeDriverManager
 from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.common.keys import Keys
 import time
-import os
 import sys
 from pathlib import Path
 import logging
@@ -291,11 +290,11 @@ class DuoinkAutomation:
 
             # Determine error type based on text content
             # Keep the original Chinese text for error detection
-            if "Cannot find referrer" in error_text:
+            if any(msg in error_text for msg in ["Cannot find referrer", "找不到该邀请码的主人"]):
                 self.logger.warning(f"Error: Invalid invitation code. Error text: '{error_text}'")
                 self._try_click_cancel()
                 return False, "INVALID_CODE"
-            elif "已经被该邀请人邀请过了" in error_text or "请不要重复邀请" in error_text:
+            elif any(msg in error_text for msg in ["已经被该邀请人邀请过了" ,"请不要重复邀请"]):
                 self.logger.warning(f"Error: Already invited. Error text: '{error_text}'")
                 self._try_click_cancel()
                 return False, "ALREADY_INVITED"
@@ -304,6 +303,7 @@ class DuoinkAutomation:
                 self.logger.warning(f"Error: Daily redemption limit reached. Error text: '{error_text}'")
                 self._try_click_cancel()
                 return False, "DAILY_LIMIT_REACHED"
+
             else:
                 self.logger.warning(f"Unknown error message: '{error_text}'")
                 return False, "UNKNOWN_ERROR"
